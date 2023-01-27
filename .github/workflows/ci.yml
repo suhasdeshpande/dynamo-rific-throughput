@@ -1,0 +1,69 @@
+name: ci
+
+on:
+  - pull_request
+  - push
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        name:
+          - Node.js 14.x
+          - Node.js 16.x
+
+        include:
+          - name: Node.js 14.x
+            node-version: "14.17"
+
+          - name: Node.js 16.x
+            node-version: "16.6"
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Node.js ${{ matrix.node-version }}
+        shell: bash -eo pipefail -l {0}
+        run: |
+          nvm install --default ${{ matrix.node-version }}
+          dirname "$(nvm which ${{ matrix.node-version }})" >> "$GITHUB_PATH"
+      - name: Configure npm
+        run: npm config set shrinkwrap false
+
+      - name: Install npm module(s) ${{ matrix.npm-i }}
+        run: npm install --save-dev ${{ matrix.npm-i }}
+        if: matrix.npm-i != ''
+
+      - name: Install Node.js dependencies
+        run: npm install
+
+      - name: Run tests
+        shell: bash
+        run: |
+          if npm -ps ls nyc | grep -q nyc; then
+            npm run test-ci
+          else
+            npm test
+          fi
+      - name: Lint code
+        if: steps.list_env.outputs.eslint != ''
+        run: npm run lint
+
+      - name: Collect code coverage
+        uses: coverallsapp/github-action@master
+        if: steps.list_env.outputs.nyc != ''
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          flag-name: run-${{ matrix.test_number }}
+          parallel: true
+
+  coverage:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Uploade code coverage
+        uses: coverallsapp/github-action@master
+        with:
+          github-token: ${{ secrets.github_token }}
+          parallel-finished: true
